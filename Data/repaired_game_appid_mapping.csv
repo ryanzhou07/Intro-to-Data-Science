@@ -1,0 +1,51 @@
+game_name,appid,status,current_status,best_matched_steam_name,match_confidence,reason,decision
+Counter-Strike 2,730,success,success,Counter-Strike 2,100.0,existing_app_id_kept,accepted_existing
+PUBG: BATTLEGROUNDS,578080,success,success,PUBG: BATTLEGROUNDS,100.0,existing_app_id_kept,accepted_existing
+Dota 2,570,success,success,Dota 2,100.0,existing_app_id_kept,accepted_existing
+Apex Legends,1172470,success,not_found,Apex Legends™,100.0,manual override verified in lookup,accepted_manual_override
+Delta Force,2507950,success,success,Delta Force,100.0,existing_app_id_kept,accepted_existing
+Bongo Cat,3419430,success,success,Bongo Cat,100.0,existing_app_id_kept,accepted_existing
+Rust,252490,success,success,Rust,100.0,existing_app_id_kept,accepted_existing
+Stardew Valley,413150,success,success,Stardew Valley,100.0,existing_app_id_kept,accepted_existing
+Marvel Rivals,2767030,success,success,Marvel Rivals,100.0,existing_app_id_kept,accepted_existing
+Grand Theft Auto V Legacy,3240220,success,not_found,Grand Theft Auto V Enhanced,100.0,manual override verified in lookup,accepted_manual_override
+Tom Clancy’s Rainbow Six Siege,359550,success,not_found,Tom Clancy's Rainbow Six Siege,100.0,manual override verified in lookup,accepted_manual_override
+War Thunder,236390,success,success,War Thunder,100.0,existing_app_id_kept,accepted_existing
+Warframe,230410,success,success,Warframe,100.0,existing_app_id_kept,accepted_existing
+Overwatch,2357570,success,not_found,Overwatch®,100.0,manual override verified in lookup,accepted_manual_override
+Geometry Dash,322170,success,success,Geometry Dash,100.0,existing_app_id_kept,accepted_existing
+NARAKA: BLADEPOINT,1203220,success,success,NARAKA: BLADEPOINT,100.0,existing_app_id_kept,accepted_existing
+DayZ,221100,success,success,DayZ,100.0,existing_app_id_kept,accepted_existing
+Team Fortress 2,440,success,success,Team Fortress 2,100.0,existing_app_id_kept,accepted_existing
+Dead by Daylight,381210,success,success,Dead by Daylight,100.0,existing_app_id_kept,accepted_existing
+VRChat,438100,success,success,VRChat,100.0,existing_app_id_kept,accepted_existing
+Don’t Starve Together,322330,success,not_found,Don't Starve Together,100.0,manual override verified in lookup,accepted_manual_override
+Baldur’s Gate 3,1086940,success,not_found,Baldur's Gate 3,100.0,manual override verified in lookup,accepted_manual_override
+Euro Truck Simulator 2,227300,success,success,Euro Truck Simulator 2,100.0,existing_app_id_kept,accepted_existing
+Battlefield™ 6,2807960,success,success,Battlefield™ 6,100.0,existing_app_id_kept,accepted_existing
+Limbus Company,1973530,success,success,Limbus Company,100.0,existing_app_id_kept,accepted_existing
+Crosshair X,,needs_review,not_found,Crossfar,73.68421052631578,fuzzy title match,unresolved
+Hearts of Iron IV,394360,success,success,Hearts of Iron IV,100.0,existing_app_id_kept,accepted_existing
+HELLDIVERS™ 2,553850,success,success,HELLDIVERS™ 2,100.0,existing_app_id_kept,accepted_existing
+ELDEN RING,1245620,success,success,ELDEN RING,100.0,existing_app_id_kept,accepted_existing
+Call of Duty®,1938090,success,success,Call of Duty®,100.0,existing_app_id_kept,accepted_existing
+Red Dead Redemption 2,1174180,success,success,Red Dead Redemption 2,100.0,existing_app_id_kept,accepted_existing
+Sid Meier’s Civilization VI,289070,success,not_found,Sid Meier’s Civilization® VI,100.0,manual override verified in lookup,accepted_manual_override
+Street Fighter™ 6,1364780,success,success,Street Fighter™ 6,100.0,existing_app_id_kept,accepted_existing
+Cyberpunk 2077,1091500,success,success,Cyberpunk 2077,100.0,existing_app_id_kept,accepted_existing
+R.E.P.O.,3241660,success,success,R.E.P.O.,100.0,existing_app_id_kept,accepted_existing
+Terraria,105600,success,success,Terraria,100.0,existing_app_id_kept,accepted_existing
+Project Zomboid,108600,success,success,Project Zomboid,100.0,existing_app_id_kept,accepted_existing
+RimWorld,294100,success,success,RimWorld,100.0,existing_app_id_kept,accepted_existing
+ARK: Survival Ascended,2399830,success,success,ARK: Survival Ascended,100.0,existing_app_id_kept,accepted_existing
+Mount & Blades II: Bannerlord,261550,success,not_found,Mount & Blade II: Bannerlord,100.0,manual override verified in lookup,accepted_manual_override
+Monster Hunger: World,582010,success,not_found,Monster Hunter: World,100.0,manual override verified in lookup,accepted_manual_override
+Rocket League,252950,success,not_found,Rocket League®,100.0,manual override verified in lookup,accepted_manual_override
+Hunt: Showdown 1896,594650,success,success,Hunt: Showdown 1896,100.0,existing_app_id_kept,accepted_existing
+The Sims™ 4,1222670,success,success,The Sims™ 4,100.0,existing_app_id_kept,accepted_existing
+World of Warships,552990,success,success,World of Warships,100.0,existing_app_id_kept,accepted_existing
+Garry’s Mod,4000,success,not_found,Garry's Mod,100.0,manual override verified in lookup,accepted_manual_override
+Palworld,1623730,success,success,Palworld,100.0,existing_app_id_kept,accepted_existing
+Valheim,892970,success,success,Valheim,100.0,existing_app_id_kept,accepted_existing
+BeamNG.drive,284160,success,success,BeamNG.drive,100.0,existing_app_id_kept,accepted_existing
+Satisfactory,526870,success,success,Satisfactory,100.0,existing_app_id_kept,accepted_existing

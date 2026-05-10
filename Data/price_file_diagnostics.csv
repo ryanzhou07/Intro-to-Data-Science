@@ -1,0 +1,51 @@
+Game,app_id,price_file_found,price_rows,first_price_date,last_price_date,missing_reason
+ARK: Survival Ascended,2399830,True,48,2023-10-26 05:10:02,2026-05-10 16:02:24,ok
+Apex Legends™,1172470,False,0,,,no_price_csv
+Baldur's Gate 3,1086940,True,43,2020-10-06 17:06:58,2026-05-10 15:57:19,ok
+Battlefield™ 6,2807960,True,15,2025-07-31 19:05:02,2026-05-10 15:57:46,ok
+BeamNG.drive,284160,True,123,2015-05-29 16:10:03,2026-05-10 16:10:11,ok
+Black Desert,582660,True,158,2017-05-24 16:10:12,2026-05-10 16:10:40,ok
+Bongo Cat,3419430,False,0,,,no_price_csv
+Call of Duty®,1938090,True,16,2022-06-08 17:10:02,2026-05-10 15:59:57,ok
+Counter-Strike 2,730,True,88,2012-11-01 17:03:08,2026-05-10 15:43:46,ok
+Cyberpunk 2077,1091500,True,118,2019-06-09 20:32:54,2026-05-10 16:01:32,ok
+DayZ,221100,True,215,2013-12-27 05:32:30,2026-05-10 15:56:19,ok
+Dead by Daylight,381210,True,193,2016-04-22 22:40:09,2026-05-10 15:56:38,ok
+Delta Force,2507950,False,0,,,no_price_csv
+Don't Starve Together,322330,True,188,2014-12-15 17:55:04,2026-05-10 15:57:07,ok
+Dota 2,570,False,0,,,no_price_csv
+ELDEN RING,1245620,True,28,2021-11-04 14:05:15,2026-05-10 15:58:37,ok
+Euro Truck Simulator 2,227300,True,335,2013-01-16 18:26:06,2026-05-10 15:57:34,ok
+Garry's Mod,4000,True,181,2012-11-02 17:43:12,2026-05-10 16:09:41,ok
+Geometry Dash,322170,True,121,2014-12-22 18:35:03,2026-05-10 15:55:11,ok
+Grand Theft Auto V Enhanced,3240220,True,29,2025-03-04 13:05:04,2026-05-10 15:50:57,ok
+HELLDIVERS™ 2,553850,True,30,2023-09-22 08:10:02,2026-05-10 15:58:23,ok
+Hearts of Iron IV,394360,True,167,2016-05-17 15:50:17,2026-05-10 15:58:12,ok
+Hunt: Showdown 1896,594650,True,201,2018-02-22 17:10:13,2026-05-10 16:09:17,ok
+Limbus Company,1973530,False,0,,,no_price_csv
+Marvel Rivals,2767030,False,0,,,no_price_csv
+Monster Hunter: World,582010,True,150,2018-07-09 15:50:15,2026-05-10 16:04:58,ok
+Mount & Blade II: Bannerlord,261550,True,95,2020-03-30 10:10:09,2026-05-10 16:03:22,ok
+NARAKA: BLADEPOINT,1203220,True,31,2021-06-13 16:05:03,2026-05-10 15:56:08,ok
+Overwatch,2357570,False,0,,,no_price_csv
+PUBG: BATTLEGROUNDS,578080,True,34,2017-03-23 15:10:13,2026-05-10 15:44:01,ok
+Palworld,1623730,True,39,2024-01-19 08:05:02,2026-05-10 16:09:52,ok
+Project Zomboid,108600,True,151,2013-11-13 05:31:30,2026-05-10 16:02:05,ok
+R.E.P.O.,3241660,True,20,2025-02-26 14:05:02,2026-05-10 16:01:46,ok
+Red Dead Redemption 2,1174180,True,154,2019-12-04 17:30:05,2026-05-10 16:00:12,ok
+RimWorld,294100,True,99,2016-07-15 17:20:09,2026-05-10 16:02:14,ok
+Rocket League®,252950,True,86,2015-07-07 07:05:03,2026-05-10 16:05:09,ok
+Rust,252490,True,155,2013-12-14 05:30:30,2026-05-10 15:48:33,ok
+Satisfactory,526870,True,96,2020-06-08 17:09:04,2026-05-10 16:10:21,ok
+Sid Meier's Civilization® VII,1295660,True,25,2024-08-20 19:05:02,2026-05-10 16:00:25,ok
+Stardew Valley,413150,True,122,2016-02-26 18:10:10,2026-05-10 15:48:52,ok
+Street Fighter™ 6,1364780,True,45,2022-12-09 01:05:02,2026-05-10 16:00:33,ok
+Team Fortress 2,440,False,0,,,no_price_csv
+Terraria,105600,True,182,2012-09-09 17:23:12,2026-05-10 16:01:56,ok
+The Sims™ 4,1222670,True,42,2020-06-18 18:59:24,2026-05-10 16:09:27,ok
+Tom Clancy's Rainbow Six Siege,359550,True,208,2015-05-14 17:10:03,2026-05-10 15:53:31,ok
+VRChat,438100,False,0,,,no_price_csv
+Valheim,892970,True,85,2021-02-02 15:00:05,2026-05-10 16:10:03,ok
+War Thunder,236390,False,0,,,no_price_csv
+Warframe,230410,False,0,,,no_price_csv
+World of Warships,552990,False,0,,,no_price_csv
