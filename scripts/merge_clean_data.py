@@ -1,11 +1,6 @@
-"""
-Merge and clean the Steam final project datasets.
-
-The monthly player-count file stays as the base table, and the other review, cluster, free-to-play, and price features are merged onto it.
-"""
-
 from pathlib import Path
 import re
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -18,7 +13,7 @@ PRICE_DIR = DATA_DIR / "Prices"
 OUT_PATH = DATA_DIR / "merged_steam_data.csv"
 
 
-def clean_money(series):
+def clean_money(series: pd.Series) -> pd.Series:
     """
     Convert price-like values into numeric dollar amounts.
 
@@ -34,7 +29,7 @@ def clean_money(series):
     )
 
 
-def normalize_name(value):
+def normalize_name(value: str) -> str:
     """
     Normalize a game name for app ID matching.
 
@@ -51,7 +46,7 @@ def normalize_name(value):
     return re.sub(r"\s+", " ", value).strip()
 
 
-def print_merge_report(name, before_rows, after_df, key_cols, match_col, new_cols):
+def print_merge_report(name: str, before_rows: int, after_df: pd.DataFrame, key_cols: list, match_col: str, new_cols: list) -> None:
     """
     Print basic diagnostics for a merge step.
 
@@ -80,7 +75,7 @@ def print_merge_report(name, before_rows, after_df, key_cols, match_col, new_col
         print(unmatched.to_string(index=False))
 
 
-def load_f2p_games():
+def load_f2p_games() -> set:
     """
     Load the free-to-play game list.
 
@@ -96,7 +91,7 @@ def load_f2p_games():
     return games
 
 
-def build_appid_mapping(popularity_games):
+def build_appid_mapping(popularity_games: Iterable[str]) -> pd.DataFrame:
     """
     Build app ID mappings for games in the popularity dataset.
 
@@ -106,11 +101,67 @@ def build_appid_mapping(popularity_games):
     Returns:
     - DataFrame with game names and repaired app IDs
     """
+    repaired_path = DATA_DIR / "repaired_game_appid_mapping.csv"
+    mapping = pd.DataFrame({"Game": sorted(popularity_games)})
+
+    # use repaired mapping when available so the merge matches the repair step
+    if repaired_path.exists():
+        repaired = pd.read_csv(repaired_path)
+        repaired = repaired.rename(columns={"game_name": "Game", "appid": "app_id"})
+        repaired["app_id"] = pd.to_numeric(repaired["app_id"], errors="coerce").astype("Int64")
+        mapping["name_simple"] = mapping["Game"].map(normalize_name)
+        repaired["name_simple"] = repaired["Game"].map(normalize_name)
+        mapping = mapping.merge(
+            repaired[["name_simple", "app_id"]],
+            on="name_simple",
+            how="left",
+        ).drop(columns=["name_simple"])
+
+        missing_repaired = mapping["app_id"].isna()
+        if missing_repaired.any():
+            lookup = pd.read_csv(ROOT / "complete_steam_lookup_2026.csv")
+            lookup["name_norm"] = lookup["name"].str.casefold()
+            lookup["name_simple"] = lookup["name"].map(normalize_name)
+
+            fallback = pd.DataFrame({"Game": mapping.loc[missing_repaired, "Game"]})
+            fallback["name_norm"] = fallback["Game"].str.casefold()
+            fallback = fallback.merge(
+                lookup[["appid", "name", "name_norm"]],
+                on="name_norm",
+                how="left",
+            ).drop(columns=["name_norm"])
+
+            still_missing = fallback["appid"].isna()
+            if still_missing.any():
+                simple = pd.DataFrame({"Game": fallback.loc[still_missing, "Game"]})
+                simple["name_simple"] = simple["Game"].map(normalize_name)
+                simple = simple.merge(
+                    lookup[["appid", "name", "name_simple"]],
+                    on="name_simple",
+                    how="left",
+                    suffixes=("", "_simple"),
+                )
+                fallback.loc[still_missing, "appid"] = simple["appid"].to_numpy()
+
+            fallback["app_id_fallback"] = pd.to_numeric(fallback["appid"], errors="coerce").astype("Int64")
+            mapping = mapping.merge(fallback[["Game", "app_id_fallback"]], on="Game", how="left")
+            mapping["app_id"] = mapping["app_id"].combine_first(mapping["app_id_fallback"])
+            mapping = mapping.drop(columns=["app_id_fallback"])
+
+        missing = mapping[mapping["app_id"].isna()]
+        print("\nApp ID mapping")
+        print(f"  source: {repaired_path.relative_to(ROOT)} preferred, local lookup fallback for gaps")
+        print(f"  games in popularity data: {len(mapping)}")
+        print(f"  games with app_id: {mapping['app_id'].notna().sum()}")
+        if len(missing):
+            print("  games still missing app_id:")
+            print(missing[["Game"]].to_string(index=False))
+        return mapping[["Game", "app_id"]]
+
     lookup = pd.read_csv(ROOT / "complete_steam_lookup_2026.csv")
     lookup["name_norm"] = lookup["name"].str.casefold()
     lookup["name_simple"] = lookup["name"].map(normalize_name)
 
-    mapping = pd.DataFrame({"Game": sorted(popularity_games)})
     mapping["name_norm"] = mapping["Game"].str.casefold()
     mapping = mapping.merge(
         lookup[["appid", "name", "name_norm"]],
@@ -131,7 +182,7 @@ def build_appid_mapping(popularity_games):
         mapping.loc[missing_exact, "appid"] = simple["appid"].to_numpy()
         mapping.loc[missing_exact, "name"] = simple["name"].to_numpy()
 
-    # fallback if the lookup name does not line up exactly
+    # fallback if the lookup name does not line up exactly !!!!
     review_map = pd.read_csv(REVIEWS_DIR / "game_appid_mapping.csv")
     review_map = review_map.rename(columns={"game_name": "Game", "appid": "appid_review"})
     mapping = mapping.merge(review_map[["Game", "appid_review", "status"]], on="Game", how="left")
@@ -140,6 +191,7 @@ def build_appid_mapping(popularity_games):
 
     missing = mapping[mapping["app_id"].isna()]
     print("\nApp ID mapping")
+    print("  source: rebuilt from complete_steam_lookup_2026.csv and Reviews/game_appid_mapping.csv")
     print(f"  games in popularity data: {len(mapping)}")
     print(f"  games with app_id: {mapping['app_id'].notna().sum()}")
     if len(missing):
@@ -149,7 +201,7 @@ def build_appid_mapping(popularity_games):
     return mapping[["Game", "app_id"]]
 
 
-def load_price_events():
+def load_price_events() -> pd.DataFrame:
     """
     Load SteamDB price event CSVs.
 
@@ -189,6 +241,9 @@ def main():
     """
     Run the full merge and feature-building workflow. Entry-point for the script.
     """
+
+
+    # start with monthly player counts since that is what we predict
     popularity = pd.read_csv(DATA_DIR / "monthy_player_count.csv")
     popularity = popularity.drop(columns=[c for c in popularity.columns if c.startswith("Unnamed")])
     popularity = popularity.rename(
@@ -202,6 +257,7 @@ def main():
     popularity["date"] = pd.to_datetime(popularity["date"], errors="coerce")
     popularity = popularity.dropna(subset=["date"])
 
+    # attach Steam app IDs so reviews and prices can line up by game
     app_map = build_appid_mapping(popularity["Game"].unique())
     df = popularity.merge(app_map, on="Game", how="left")
     df["app_id"] = df["app_id"].astype("Int64")
@@ -212,7 +268,8 @@ def main():
     print(f"  date range: {df['date'].min().date()} to {df['date'].max().date()}")
     print(f"  duplicate Game-date rows: {df.duplicated(['Game', 'date']).sum()}")
 
-    # pull monthly review data
+    # using monthly reviews here, not all-time totals
+    # monthly reviews line up better with the monthly player target
     reviews = pd.read_csv(DATA_DIR / "Reviews.csv")
     reviews = reviews.drop(columns=[c for c in reviews.columns if c.startswith("Unnamed")])
     reviews = reviews.rename(
@@ -241,34 +298,9 @@ def main():
     df = df.merge(reviews[["Game", "date"] + review_cols], on=["Game", "date"], how="left")
     print_merge_report("Monthly review merge", before, df, ["Game", "date"], "monthly_num_reviews", review_cols)
 
-    # pull static review totals
-    review_stats = pd.read_csv(REVIEWS_DIR / "game_review_stats.csv")
-    review_stats = review_stats.rename(
-        columns={
-            "appid": "app_id",
-            "total_reviews": "total_review_count",
-            "total_positive": "total_positive_reviews",
-            "total_negative": "total_negative_reviews",
-        }
-    )
-    review_stats["app_id"] = pd.to_numeric(review_stats["app_id"], errors="coerce").astype("Int64")
-    review_stats["overall_positive_review_percent"] = np.where(
-        review_stats["total_review_count"] > 0,
-        review_stats["total_positive_reviews"] / review_stats["total_review_count"],
-        np.nan,
-    )
-    static_review_cols = [
-        "total_review_count",
-        "total_positive_reviews",
-        "total_negative_reviews",
-        "overall_positive_review_percent",
-        "review_score",
-    ]
-    before = len(df)
-    df = df.merge(review_stats[["app_id"] + static_review_cols], on="app_id", how="left")
-    print_merge_report("Static review-summary merge", before, df, ["Game", "app_id"], "total_review_count", static_review_cols)
-
-    # add clusters and genre/type flags
+    # all-time review totals can leak future info, so we leave them out
+    # the archived all-time review summary was explored but is incomplete and not monthly
+    # add genre/type cluster labels and the binary genre/type flags used to explain them
     clusters = pd.read_csv(DATA_DIR / "clusters.csv").drop(columns=["Unnamed: 0"], errors="ignore")
     details = pd.read_csv(DATA_DIR / "cluster_details.csv")
     before = len(df)
@@ -279,11 +311,11 @@ def main():
     df = df.merge(details, on="Game", how="left")
     print_merge_report("Genre/type binary merge", before, df, ["Game"], detail_cols[0], detail_cols)
 
-    # add f2p status
+    # split up free vs paid games
     f2p_games = load_f2p_games()
     df["is_free_to_play"] = df["Game"].isin(f2p_games).astype(int)
 
-    # attach the last known price before each month
+    # use last known price so we do not grab future prices
     price_events = load_price_events()
     price_cols = [
         "price",
@@ -323,7 +355,7 @@ def main():
     df = pd.concat(merged_parts, ignore_index=True).sort_values(["Game", "date"])
     print_merge_report("Price as-of merge", before, df, ["Game", "app_id", "date"], "price", price_cols)
 
-    # fill price state inside each game only
+    # keep price filling within the same game only
     state_cols = ["price", "historical_low", "original_price", "discount_percent", "discount_active"]
     df[state_cols] = df.groupby("app_id", dropna=False)[state_cols].ffill()
     df["price_change_indicator"] = df["price_change_indicator"].fillna(0)
@@ -332,11 +364,13 @@ def main():
     df.loc[df["is_free_to_play"].eq(1) & df["discount_percent"].isna(), "discount_percent"] = 0
     df.loc[df["is_free_to_play"].eq(1) & df["discount_active"].isna(), "discount_active"] = 0
 
+    # log transforms reduce the pull of extreme blockbuster games! this reduces outliers BIG TIME and makes the modeling way mor estable
     df["avg_price_over_time"] = df.groupby("app_id", dropna=False)["price"].transform("mean")
     df["weighted_review"] = np.log1p(df["monthly_num_reviews"].fillna(0)) * df["positive_review_percent"].fillna(0)
     df["log_monthly_avg_players"] = np.log1p(df["monthly_avg_players"].clip(lower=0))
     df["log_monthly_num_reviews"] = np.log1p(df["monthly_num_reviews"].fillna(0).clip(lower=0))
-    df["log_total_review_count"] = np.log1p(df["total_review_count"].fillna(0).clip(lower=0))
+
+    # `total_review_count` (static all-time totals) are not merged into the main dataset, so we do not compute a log-total feature here.
     df["log_price"] = np.log1p(df["price"].fillna(0).clip(lower=0))
 
     print("\nFinal missing-value counts for key fields")
@@ -346,7 +380,6 @@ def main():
         "price",
         "monthly_num_reviews",
         "positive_review_percent",
-        "total_review_count",
         "cluster_id",
         "is_free_to_play",
     ]
@@ -356,6 +389,7 @@ def main():
     missing_app = df[df["app_id"].isna()][["Game"]].drop_duplicates()
     print(missing_app.to_string(index=False) if len(missing_app) else "  none")
 
+    # save one row per game-month for modeling
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUT_PATH, index=False)
     print(f"\nSaved merged dataset to {OUT_PATH.relative_to(ROOT)}")

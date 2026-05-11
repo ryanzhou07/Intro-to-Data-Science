@@ -17,7 +17,7 @@ REVIEWS_DIR = ROOT / "Reviews"
 PRICE_DIR = DATA_DIR / "Prices"
 
 
-def normalize_title(title):
+def normalize_title(title: str) -> str:
     """
     Normalize a game title for matching against Steam lookup data.
 
@@ -87,7 +87,7 @@ MANUAL_APPID_OVERRIDES = {
 }
 
 
-def build_lookup():
+def build_lookup() -> pd.DataFrame:
     """
     Load the Steam lookup file and add normalized names.
 
@@ -99,7 +99,7 @@ def build_lookup():
     return lookup
 
 
-def choose_exact_match(norm_name, lookup):
+def choose_exact_match(norm_name, lookup) -> pd.Series | None:
     """
     Find an exact match on normalized title.
 
@@ -118,7 +118,7 @@ def choose_exact_match(norm_name, lookup):
     return row
 
 
-def choose_fuzzy_match(norm_name, lookup):
+def choose_fuzzy_match(norm_name, lookup) :
     """
     Find the closest fuzzy title match
     Confidence score is returned based on string similarity as inconsistency in naming is NOT fun :(
@@ -140,7 +140,7 @@ def choose_fuzzy_match(norm_name, lookup):
     return row, float(score)
 
 
-def repair_one(game_name, current_appid, current_status, lookup):
+def repair_one(game_name: str, current_appid: float, current_status: str, lookup: pd.DataFrame) -> dict:
     """
     Repair the app ID for one game if possible.
 
@@ -221,7 +221,7 @@ def repair_one(game_name, current_appid, current_status, lookup):
     }
 
 
-def price_diagnostic_row(game, appid, popularity):
+def price_diagnostic_row(game: str, appid: int, popularity: pd.DataFrame) -> dict:
     """
     Check whether a game has a usable price CSV.
 
