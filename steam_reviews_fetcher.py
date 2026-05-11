@@ -3,42 +3,113 @@ import pandas as pd
 import time
 from typing import Optional, Dict, List
 import argparse
+import difflib
+from pathlib import Path
+import re
+import unicodedata
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+REVIEWS_DIR = PROJECT_ROOT / "Reviews"
+GAME_LIST_PATH = PROJECT_ROOT / "game_list.csv"
+LOOKUP_PATH = PROJECT_ROOT / "complete_steam_lookup_2026.csv"
+
+def normalize_title(title: str) -> str:
+    """
+    Normalize a game title for matching against Steam lookup data.
+
+    Parameters:
+    - title: Raw game title
+
+    Returns:
+    - Cleaned title string used for matching
+    """
+    if pd.isna(title):
+        return ""
+    title = unicodedata.normalize("NFKD", str(title))
+    title = title.replace("’", "'").replace("‘", "'")
+    title = title.replace("“", '"').replace("”", '"')
+    title = title.replace("™", "").replace("®", "").replace("©", "")
+    title = title.lower().replace("&", " and ")
+    title = re.sub(r"[^a-z0-9\s]", " ", title)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
+
+MANUAL_APPID_OVERRIDES = {
+    "Tom Clancy’s Rainbow Six Siege": 359550,
+    "Tom Clancy's Rainbow Six Siege": 359550,
+    "Apex Legends": 1172470,
+    "Overwatch": 2357570,
+    "Don’t Starve Together": 322330,
+    "Baldur’s Gate 3": 1086940,
+    "Mount & Blades II: Bannerlord": 261550,
+    "Monster Hunger: World": 582010,
+    "Rocket League": 252950,
+    "Garry’s Mod": 4000,
+    "Sid Meier’s Civilization VI": 289070,
+    "Grand Theft Auto V Legacy": 3240220,
+}
 
 def find_appid(game_name: str, lookup_df: pd.DataFrame) -> Optional[int]:
     """
     Find AppID from the lookup file by matching game name
+
+    Parameters:
+    - game_name: Project game title
+    - lookup_df: Steam app lookup DataFrame
+
+    Returns:
+    - Steam app ID if found, otherwise None
     """
-    game_name_clean = game_name.strip()
+    if game_name in MANUAL_APPID_OVERRIDES:
+        return MANUAL_APPID_OVERRIDES[game_name]
+
+    game_name_clean = str(game_name).strip()
+    game_name_norm = normalize_title(game_name_clean)
+    lookup = lookup_df.copy()
+    lookup["normalized_name"] = lookup["name"].map(normalize_title)
     
-    # Try exact match first (case insensitive)
+    # exact name first
     exact_match = lookup_df[lookup_df['name'].str.lower() == game_name_clean.lower()]
     if not exact_match.empty:
         return int(exact_match.iloc[0]['appid'])
+
+    # then normalized names
+    normalized_match = lookup[lookup["normalized_name"] == game_name_norm]
+    if not normalized_match.empty:
+        return int(normalized_match.sort_values("appid").iloc[0]["appid"])
     
-    # Try partial match
+    # then a simple partial match
     partial_match = lookup_df[lookup_df['name'].str.contains(game_name_clean, case=False, na=False, regex=False)]
     if not partial_match.empty:
-        # Prefer closer matches
+        # prefer closer matches
         for idx, row in partial_match.iterrows():
             if game_name_clean.lower() in row['name'].lower():
                 return int(row['appid'])
         return int(partial_match.iloc[0]['appid'])
+
+    # only accept very close fuzzy matches
+    names = lookup["normalized_name"].dropna().unique().tolist()
+    fuzzy = difflib.get_close_matches(game_name_norm, names, n=1, cutoff=0.95)
+    if fuzzy:
+        row = lookup[lookup["normalized_name"] == fuzzy[0]].sort_values("appid").iloc[0]
+        return int(row["appid"])
     
     return None
- 
+
 def get_reviews(appid: int, num_reviews: int = 100, filter_type: str = 'recent', 
                 language: str = 'english', day_range: int = 365) -> Dict:
     """
-    Fetch reviews for a specific AppID using Steam's Review API
-    
+    Fetch reviews for a specific AppID using Steam's Review API.
+
     Parameters:
     - appid: Steam App ID
-    - num_reviews: Number of reviews to fetch per request (max 100)
-    - filter_type: 'recent', 'updated', or 'all'
-    - language: Language filter (e.g., 'english', 'all')
-    - day_range: Number of days to look back (for 'recent' filter)
-    
-    Returns dictionary with review data
+    - num_reviews: Number of reviews to fetch per request
+    - filter_type: Review filter type, such as 'recent', 'updated', or 'all'
+    - language: Language filter for reviews
+    - day_range: Number of days to look back for recent reviews
+
+    Returns:
+    - Dictionary containing review response data
     """
     url = f"https://store.steampowered.com/appreviews/{appid}"
     
@@ -59,11 +130,18 @@ def get_reviews(appid: int, num_reviews: int = 100, filter_type: str = 'recent',
     except requests.exceptions.RequestException as e:
         print(f" Error: {e}")
         return None
- 
-def get_all_reviews_paginated(appid: int, max_reviews: int = 1000, 
-                               filter_type: str = 'recent') -> List[Dict]:
+
+def get_all_reviews_paginated(appid: int, max_reviews: int = 1000, filter_type: str = 'recent') -> List[Dict]:
     """
     Fetch multiple pages of reviews (up to max_reviews)
+
+    Parameters:
+    - appid: Steam App ID
+    - max_reviews: Maximum number of reviews to collect
+    - filter_type: Review filter type
+
+    Returns:
+    - List of raw review dictionaries
     """
     url = f"https://store.steampowered.com/appreviews/{appid}"
     all_reviews = []
@@ -98,16 +176,26 @@ def get_all_reviews_paginated(appid: int, max_reviews: int = 1000,
             if not cursor or cursor == "*":
                 break
                 
-            time.sleep(1)  # Rate limiting
+            time.sleep(1)  # avoid hitting the API too fast
             
         except Exception as e:
             print(f"  Pagination error: {e}")
             break
     
     return all_reviews[:max_reviews]
- 
+
 def parse_review_data(reviews: List[Dict], game_name: str, appid: int) -> List[Dict]:
-    """Extract relevant info from review data"""
+    """
+    Extract relevant info from review data.
+
+    Parameters:
+    - reviews: Raw review dictionaries from the Steam API
+    - game_name: Project game title
+    - appid: Steam App ID
+
+    Returns:
+    - List of cleaned review dictionaries
+    """
     parsed_reviews = []
     
     for review in reviews:
@@ -132,9 +220,17 @@ def parse_review_data(reviews: List[Dict], game_name: str, appid: int) -> List[D
         })
     
     return parsed_reviews
- 
+
 def get_review_summary(appid: int) -> Optional[Dict]:
-    """Get review summary statistics"""
+    """
+    Get review summary statistics
+
+    Parameters:
+    - appid: Steam App ID
+
+    Returns:
+    - Dictionary containing review summary statistics, or None
+    """
     url = f"https://store.steampowered.com/appreviews/{appid}"
     params = {'json': 1, 'num_per_page': 0}
     
@@ -158,13 +254,16 @@ def get_review_summary(appid: int) -> Optional[Dict]:
     return None
  
 def main():
+    """
+    Fetch Steam reviews and save review CSV files.
+
+    Returns:
+    - None
+    """
     parser = argparse.ArgumentParser(description='Fetch Steam reviews for games in game_list.csv')
-    parser.add_argument('--reviews-per-game', type=int, default=100, 
-                       help='Number of reviews to fetch per game (default: 100, max: 1000)')
-    parser.add_argument('--filter', choices=['recent', 'all', 'updated'], default='recent',
-                       help='Review filter type (default: recent)')
-    parser.add_argument('--delay', type=float, default=1.5,
-                       help='Delay between requests in seconds (default: 1.5)')
+    parser.add_argument('--reviews-per-game', type=int, default=100,  help='Number of reviews to fetch per game (default: 100, max: 1000)')
+    parser.add_argument('--filter', choices=['recent', 'all', 'updated'], default='recent',help='Review filter type (default: recent)')
+    parser.add_argument('--delay', type=float, default=1.5, help='Delay between requests in seconds (default: 1.5)')
     
     args = parser.parse_args()
     
@@ -173,16 +272,16 @@ def main():
     print("STEAM REVIEWS FETCHER")
     print("="*70)
     
-    # Load files
+    # load files
     print("\nLoading files...")
     try:
-        games_df = pd.read_csv("game_list.csv")
-        lookup_df =pd.read_csv("complete_steam_lookup_2026.csv")
+        games_df = pd.read_csv(GAME_LIST_PATH)
+        lookup_df = pd.read_csv(LOOKUP_PATH)
     except FileNotFoundError as e:
         print(f"Error: {e}")
         print("\nMake sure these files are in the same directory:")
-        print(f"  - {GAME_LIST_FILE}")
-        print(f"  - {LOOKUP_FILE}")
+        print(f"  - {GAME_LIST_PATH}")
+        print(f"  - {LOOKUP_PATH}")
         return
     
     print(f"Loaded {len(games_df)} games to process")
@@ -192,7 +291,7 @@ def main():
     print(f"  - Filter: {args.filter}")
     print(f"  - Delay: {args.delay}s")
     
-    # Results storage
+    # store results while we loop
     all_reviews = []
     game_mapping = []
     game_stats = []
@@ -205,7 +304,7 @@ def main():
         game_name = row['Game']
         print(f"[{idx+1}/{len(games_df)}] {game_name}")
         
-        # Find AppID
+        # find app id
         appid = find_appid(game_name, lookup_df)
         
         if appid is None:
@@ -219,7 +318,7 @@ def main():
         
         print(f"  AppID: {appid}")
         
-        # Get summary stats
+        # pull summary stats
         stats = get_review_summary(appid)
         if stats:
             print(f"  {stats['total_reviews']:,} total reviews ({stats['review_score_desc']})")
@@ -227,16 +326,15 @@ def main():
             stats['appid'] = appid
             game_stats.append(stats)
         
-        # Fetch reviews
+        # pull reviews
         if args.reviews_per_game > 100:
-            # Use pagination for more than 100 reviews
+            # use pagination for larger pulls
             print(f"  Fetching {args.reviews_per_game} reviews (paginated)...")
             reviews_raw = get_all_reviews_paginated(appid, max_reviews=args.reviews_per_game, 
                                                     filter_type=args.filter)
         else:
-            # Single request
-            review_data = get_reviews(appid, num_reviews=args.reviews_per_game, 
-                                     filter_type=args.filter)
+            # one request is enough
+            review_data = get_reviews(appid, num_reviews=args.reviews_per_game, filter_type=args.filter)
             reviews_raw = review_data.get('reviews', []) if review_data and review_data.get('success') else []
         
         if reviews_raw:
@@ -259,32 +357,35 @@ def main():
                 'reviews_fetched': 0
             })
         
-        # Rate limiting
+        # avoid hitting the API too fast
         time.sleep(args.delay)
         print()
     
-    # Save results
+    # save results
     print("="*70)
     print("SAVING RESULTS")
     print("="*70)
     
     if all_reviews:
         reviews_df = pd.DataFrame(all_reviews)
-        reviews_df.to_csv('steam_reviews.csv', index=False)
-        print(f"Saved {len(reviews_df):,} reviews to 'steam_reviews.csv'")
+        REVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+        reviews_df.to_csv(REVIEWS_DIR / 'steam_reviews.csv', index=False)
+        print(f"Saved {len(reviews_df):,} reviews to 'Reviews/steam_reviews.csv'")
     else:
         print("No reviews were collected")
     
     mapping_df = pd.DataFrame(game_mapping)
-    mapping_df.to_csv('game_appid_mapping.csv', index=False)
-    print(f"Saved game mapping to 'game_appid_mapping.csv'")
+    REVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+    mapping_df.to_csv(REVIEWS_DIR / 'game_appid_mapping.csv', index=False)
+    print(f"Saved game mapping to 'Reviews/game_appid_mapping.csv'")
     
     if game_stats:
         stats_df = pd.DataFrame(game_stats)
-        stats_df.to_csv('game_review_stats.csv', index=False)
-        print(f"Saved review statistics to 'game_review_stats.csv'")
+        REVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+        stats_df.to_csv(REVIEWS_DIR / 'game_review_stats.csv', index=False)
+        print(f"Saved review statistics to 'Reviews/game_review_stats.csv'")
     
-    # Summary
+    # quick summary
     print("\n" + "="*70)
     print("SUMMARY")
     print("="*70)
