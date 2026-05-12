@@ -1,15 +1,34 @@
-# Python
+# macOS / system junk that i don't need lol
+.DS_Store
+__MACOSX/
+
+# python cache
 __pycache__/
 *.pyc
-.venv/
-venv/
+*.pyo
+*.pyd
 
-# Jupyter
+# jupyter
 .ipynb_checkpoints/
 
-# Local environment files
-.env
-.env.*
+# py venv
+.venv/
+venv/
+env/
 
-# System metadata
-.DS_Store
+# latex build files
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# wtv u call this
+.vscode/
+.idea/
+
+# weirdo temp files
+*.tmp
+*.bak

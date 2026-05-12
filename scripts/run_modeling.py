@@ -33,6 +33,8 @@ MODELING_PATH = ROOT / "Data" / "modeling_dataset.csv"
 FIGURES_DIR = ROOT / "figures"
 SUMMARY_PATH = ROOT / "results_summary.md"
 RESULTS_PATH = ROOT / "Data" / "model_results.csv"
+MODEL_COMPARISON_PATH = ROOT / "Data" / "model_comparison_results.csv"
+REVIEW_TIMING_PATH = ROOT / "Data" / "review_timing_comparison_results.csv"
 IMPORTANCE_PATH = ROOT / "Data" / "random_forest_feature_importance.csv"
 
 
@@ -55,7 +57,7 @@ GENRE_COLS = [
 ]
 
 
-def rmse(y_true, y_pred):
+def rmse(y_true: pd.Series, y_pred: pd.Series) -> float:
     """
     Calculate root mean squared error.
 
@@ -69,9 +71,11 @@ def rmse(y_true, y_pred):
     return float(np.sqrt(mean_squared_error(y_true, y_pred)))
 
 
-def evaluate_grouped_models(X, y, groups):
+def evaluate_grouped_models(X: pd.DataFrame, y: pd.Series, groups: pd.Series) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Run baseline, linear regression, and random forest with GroupKFold.
+
+    GroupKFold keeps rows from the same game together, so the same app does not appear in both training and test data.
 
     Parameters:
     - X: Feature matrix
@@ -138,9 +142,9 @@ def evaluate_grouped_models(X, y, groups):
     return results, rf_pred_df
 
 
-def save_correlation_heatmap(df, feature_cols):
+def save_correlation_heatmap(df: pd.DataFrame, feature_cols: list) -> None:
     """
-    Save a heatmap for the main numeric variables.
+    Save a heatmap for the final modeling variables.
 
     Parameters:
     - df: Modeling dataset
@@ -152,27 +156,26 @@ def save_correlation_heatmap(df, feature_cols):
     corr_cols = [
         "log_monthly_avg_players",
         "months_since_release",
-        "price",
         "log_price",
         "discount_percent",
-        "discount_active",
         "is_free_to_play",
-        "monthly_num_reviews",
         "log_monthly_num_reviews",
         "positive_review_percent",
         "weighted_review",
+        "price_missing_flag",
+        "monthly_reviews_missing_flag",
+        "positive_review_percent_missing_flag",
     ]
     corr_cols = [c for c in corr_cols if c in df.columns and c in feature_cols + ["log_monthly_avg_players"]]
 
     plt.figure(figsize=(10, 8))
     sns.heatmap(df[corr_cols].corr(), cmap="vlag", center=0, annot=False, square=True)
-    plt.title("Correlation Heatmap of Main Numeric Variables")
+    plt.title("Correlation Heatmap of Final Modeling Variables")
     plt.tight_layout()
     plt.savefig(FIGURES_DIR / "correlation_heatmap.png", dpi=200)
     plt.close()
 
-
-def save_feature_importance(model, feature_cols):
+def save_feature_importance(model: RandomForestRegressor, feature_cols: list) -> pd.DataFrame:
     """
     Save Random Forest feature importances.
 
@@ -203,7 +206,7 @@ def save_feature_importance(model, feature_cols):
     return importance
 
 
-def save_predicted_vs_actual(pred_df):
+def save_predicted_vs_actual(pred_df: pd.DataFrame):
     """
     Save the predicted-versus-actual plot.
 
@@ -226,9 +229,77 @@ def save_predicted_vs_actual(pred_df):
     plt.close()
 
 
-def save_cluster_summary(df):
+def build_price_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Save a simple cluster summary table and plot.
+    Create price-related features for modeling and summaries.
+
+    Parameters:
+    - df: DataFrame containing merged game-month data
+
+    Returns:
+    - DataFrame with added price feature columns
+    """
+    df = df.copy()
+
+    # mark rows where price data was missing before imputation
+    df["price_missing_flag"] = df["price"].isna().astype(int)
+
+    # split out free vs paid games so the price column is easier to interpret
+    df["is_paid"] = 1 - df["is_free_to_play"]
+    df["has_price_history"] = 1 - df["price_missing_flag"]
+
+    # discounts get their own flag so price and sale activity are separate signals
+    df["is_discounted"] = (df["discount_percent"].fillna(0) > 0).astype(int)
+
+    # price buckets are mostly for summaries and paper wording
+    df["price_bucket"] = pd.cut(
+        df["price"].fillna(-1),
+        bins=[-1.01, -0.01, 0, 10, 30, float("inf")],
+        labels=["missing", "free", "low", "mid", "high"],
+    )
+    df["discount_bucket"] = pd.cut(
+        df["discount_percent"].fillna(-1),
+        bins=[-1.01, -0.01, 0, 0.25, 0.50, float("inf")],
+        labels=["missing", "none", "small", "medium", "large"],
+    )
+    return df
+
+
+def most_common_flags(group: pd.DataFrame, cols: list, max_flags=4) -> str:
+    """
+    Summarize the most common genre/type flags in a cluster.
+
+    Parameters:
+    - group: DataFrame for one cluster
+    - cols: Genre/type indicator columns
+    - max_flags: Number of labels to keep
+
+    Returns:
+    - Comma-separated genre/type labels
+    """
+    rates = group[cols].mean().sort_values(ascending=False)
+    common = rates[rates > 0].head(max_flags)
+    return ", ".join(f"{name} ({share:.0%})" for name, share in common.items())
+
+
+def example_games(group, max_games=4):
+    """
+    Pick a few example games from a cluster.
+
+    Parameters:
+    - group: DataFrame for one cluster
+    - max_games: Number of example titles to keep
+
+    Returns:
+    - Comma-separated game names
+    """
+    games = sorted(group["Game"].dropna().unique())[:max_games]
+    return ", ".join(games)
+
+
+def save_cluster_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Save a compact cluster summary table and plot.
 
     Parameters:
     - df: Modeling dataset with cluster labels
@@ -236,19 +307,36 @@ def save_cluster_summary(df):
     Returns:
     - DataFrame containing cluster-level summary statistics
     """
+    # summarize clusters so the paper can describe what the labels mean
+    game_level = df.sort_values("date").drop_duplicates("Game").copy()
+
     summary = (
         df.groupby("cluster_id")
         .agg(
             games=("Game", "nunique"),
             rows=("Game", "size"),
             avg_log_players=("log_monthly_avg_players", "mean"),
-            avg_players=("monthly_avg_players", "mean"),
-            avg_price=("price", "mean"),
+            median_players=("monthly_avg_players", "median"),
+            avg_log_monthly_reviews=("log_monthly_num_reviews", "mean"),
+            avg_positive_review_percent=("positive_review_percent", "mean"),
+            avg_log_price=("log_price", "mean"),
             free_to_play_share=("is_free_to_play", "mean"),
+            discount_month_share=("is_discounted", "mean"),
         )
         .reset_index()
         .sort_values("avg_log_players", ascending=False)
     )
+    cluster_notes = []
+    for cluster_id, group in game_level.groupby("cluster_id"):
+        cluster_notes.append(
+            {
+                "cluster_id": cluster_id,
+                "common_genre_type_flags": most_common_flags(group, GENRE_COLS),
+                "example_games": example_games(group),
+            }
+        )
+    cluster_notes = pd.DataFrame(cluster_notes)
+    summary = summary.merge(cluster_notes, on="cluster_id", how="left")
     summary.to_csv(ROOT / "Data" / "cluster_summary.csv", index=False)
 
     plt.figure(figsize=(8, 5))
@@ -261,8 +349,54 @@ def save_cluster_summary(df):
     plt.close()
     return summary
 
+def summarize_results(results: pd.DataFrame) -> pd.DataFrame:
+    """
+    Average model metrics across folds.
 
-def save_example_time_series(df):
+    Parameters:
+    - results: Fold-level model result table
+
+    Returns:
+    - DataFrame with mean and standard deviation for each metric
+    """
+    summary = results.groupby("model").agg(
+        r2_mean=("r2", "mean"),
+        r2_std=("r2", "std"),
+        mae_mean=("mae", "mean"),
+        mae_std=("mae", "std"),
+        rmse_mean=("rmse", "mean"),
+        rmse_std=("rmse", "std"),
+    )
+    order = ["Mean baseline", "Linear Regression", "Random Forest"]
+    return summary.loc[[m for m in order if m in summary.index]]
+
+
+def summarize_comparison(results: pd.DataFrame) -> pd.DataFrame:
+    """
+    Average model metrics by feature set.
+
+    Parameters:
+    - results: Fold-level comparison result table
+
+    Returns:
+    - DataFrame with mean and standard deviation for each feature set/model
+    """
+    return (
+        results.groupby(["feature_set", "model"])
+        .agg(
+            r2_mean=("r2", "mean"),
+            r2_std=("r2", "std"),
+            mae_mean=("mae", "mean"),
+            mae_std=("mae", "std"),
+            rmse_mean=("rmse", "mean"),
+            rmse_std=("rmse", "std"),
+        )
+        .reset_index()
+        .sort_values(["feature_set", "model"])
+    )
+
+
+def save_example_time_series(df: pd.DataFrame) -> None:
     """
     Save a player-count time series plot for a few example games.
 
@@ -288,53 +422,36 @@ def save_example_time_series(df):
     plt.close()
 
 
-def write_summary(df, feature_cols, results, importance, cluster_summary, update_note, leakage_note):
+def write_summary(df: pd.DataFrame, feature_cols: list, results: pd.DataFrame, comparison_summary: pd.DataFrame, review_timing_summary: pd.DataFrame, importance: pd.DataFrame, cluster_summary: pd.DataFrame, update_note: str) -> pd.DataFrame:
     """
-    Write a short markdown summary of the modeling results.
+    Write a compact markdown summary of cleaned data and model results.
 
     Parameters:
     - df: Final modeling dataset
     - feature_cols: Feature columns used for modeling
     - results: Fold-level model result table
+    - comparison_summary: Model comparison with and without cluster features
+    - review_timing_summary: Model comparison using same-month vs lagged reviews
     - importance: Random Forest feature importance table
     - cluster_summary: Cluster-level summary table
     - update_note: Note about update-history availability
-    - leakage_note: Note about excluded static review totals
 
     Returns:
     - DataFrame containing average model performance
     """
-    summary = results.groupby("model").agg(
-        r2_mean=("r2", "mean"),
-        r2_std=("r2", "std"),
-        mae_mean=("mae", "mean"),
-        mae_std=("mae", "std"),
-        rmse_mean=("rmse", "mean"),
-        rmse_std=("rmse", "std"),
-    )
-    # keep the table easy to read
-    order = ["Mean baseline", "Linear Regression", "Random Forest"]
-    summary = summary.loc[[m for m in order if m in summary.index]]
-    best_model = summary["r2_mean"].idxmax()
+    summary = summarize_results(results)
 
     lines = []
     lines.append("# Results Summary\n")
-    lines.append("## Dataset\n")
+
+    lines.append("## Cleaned Modeling Data\n")
     lines.append(f"- Modeling rows: {len(df):,}")
     lines.append(f"- Games: {df['Game'].nunique()}")
     lines.append(f"- App IDs: {df['app_id'].nunique()}")
     lines.append(f"- Date range: {df['date'].min().date()} to {df['date'].max().date()}")
-    lines.append(f"- Target: `log_monthly_avg_players`")
+    lines.append("- Target: `log_monthly_avg_players`")
     lines.append(f"- Update-history status: {update_note}")
-    lines.append(f"- Static review note: {leakage_note}\n")
-
-    lines.append("## Missing Data Decisions\n")
-    lines.append("- Time-varying price/review fields were forward-filled within each game only.")
-    lines.append("- Remaining missing `monthly_num_reviews` values were filled with 0.")
-    lines.append("- Remaining missing `discount_percent` and `discount_active` values were filled with 0.")
-    lines.append("- Remaining missing `positive_review_percent` values were filled with the game median, then the dataset median if needed.")
-    lines.append("- Remaining missing `price` values were filled with the game median, then 0 if no price was available.")
-    lines.append("- Missingness flags were kept for price, monthly reviews, positive-review percent, and static review totals.\n")
+    lines.append("")
 
     lines.append("## Features Used\n")
     lines.extend([f"- `{c}`" for c in feature_cols])
@@ -343,7 +460,13 @@ def write_summary(df, feature_cols, results, importance, cluster_summary, update
     lines.append("## Model Performance\n")
     lines.append(summary.to_markdown(floatfmt=".3f"))
     lines.append("")
-    lines.append(f"Best model by mean GroupKFold R²: **{best_model}**.")
+
+    lines.append("## Genre/Cluster Feature Comparison\n")
+    lines.append(comparison_summary.to_markdown(index=False, floatfmt=".3f"))
+    lines.append("")
+
+    lines.append("## Review Timing Comparison\n")
+    lines.append(review_timing_summary.to_markdown(index=False, floatfmt=".3f"))
     lines.append("")
 
     lines.append("## Top 10 Random Forest Feature Importances\n")
@@ -354,39 +477,8 @@ def write_summary(df, feature_cols, results, importance, cluster_summary, update
     lines.append(cluster_summary.to_markdown(index=False, floatfmt=".3f"))
     lines.append("")
 
-    lines.append("## Paper-Ready Findings\n")
-    rf = summary.loc["Random Forest"]
-    lr = summary.loc["Linear Regression"]
-    top_feature = importance.iloc[0]["feature"]
-    lines.append(
-        f"- Random Forest achieved the strongest predictive performance with mean R² = {rf['r2_mean']:.3f}, "
-        f"MAE = {rf['mae_mean']:.3f}, and RMSE = {rf['rmse_mean']:.3f}. This suggests that nonlinear "
-        "relationships among time, pricing, review, and genre/type features explain player activity better than a purely linear model."
-    )
-    lines.append(
-        f"- Linear Regression produced mean R² = {lr['r2_mean']:.3f} and MAE = {lr['mae_mean']:.3f}. "
-        "This gives a useful simple baseline, but its lower performance suggests the associations are not well captured by one straight-line model."
-    )
-    lines.append(
-        f"- The most important Random Forest feature was `{top_feature}`. This indicates that the model relied heavily on that variable when predicting log monthly players, but it does not prove causality."
-    )
-    lines.append(
-        "- Review-related variables appeared among the model inputs and should be interpreted as associations with player activity. Because same-month reviews and players are measured in the same period, the direction of influence is ambiguous."
-    )
-    lines.append(
-        "- Pricing features are useful for describing associations with popularity, but the model should not be described as estimating pricing elasticity because it does not isolate causal price responses."
-    )
-    lines.append("")
-
-    lines.append("## Limitations\n")
-    lines.append("- No usable update-history CSV was found, so update frequency/support strategy could not be included in the final models.")
-    lines.append("- Price data is incomplete for some games/months, and missing price values were imputed with conservative within-game medians or 0.")
-    lines.append("- Static review totals were available for only 38 games and were not used as main predictive features because they appear to be current all-time totals, which can leak future information into earlier months.")
-    lines.append("- The sample includes top games, so results may not generalize to typical or low-popularity Steam games.")
-    lines.append("- The results are correlational and should not be described as causal.")
     SUMMARY_PATH.write_text("\n".join(lines), encoding="utf-8")
     return summary
-
 
 def main():
     """
@@ -415,11 +507,12 @@ def main():
     print("\nUpdate-history search")
     print(" ", update_note)
 
-    # flag rows that need imputation
-    df["price_missing_flag"] = df["price"].isna().astype(int)
+    # build simple price and free-to-play differentiators before filling values
+    df = build_price_features(df)
+
+    # flag review rows that need imputation
     df["monthly_reviews_missing_flag"] = df["monthly_num_reviews"].isna().astype(int)
     df["positive_review_percent_missing_flag"] = df["positive_review_percent"].isna().astype(int)
-    df["static_reviews_missing_flag"] = df["total_review_count"].isna().astype(int)
 
     time_cols = [
         "price",
@@ -428,57 +521,55 @@ def main():
         "monthly_num_reviews",
         "positive_review_percent",
         "weighted_review",
-        "total_review_count",
     ]
     time_cols = [c for c in time_cols if c in df.columns]
 
     print("\nMissing values before imputation")
     print(df[time_cols].isna().sum().to_string())
 
-    df[time_cols] = df.groupby("app_id", group_keys=False)[time_cols].ffill()
-
-    # simple fills after within-game ffill
+    # use simple fills so we do not borrow info from future months
+    # missing flags let the model know which values were unavailable
     if "monthly_num_reviews" in df:
         df["monthly_num_reviews"] = df["monthly_num_reviews"].fillna(0)
+    df["price"] = df["price"].fillna(0)
+    df["positive_review_percent"] = df["positive_review_percent"].fillna(0)
     if "discount_percent" in df:
         df["discount_percent"] = df["discount_percent"].fillna(0)
     if "discount_active" in df:
         df["discount_active"] = df["discount_active"].fillna(0)
 
-    game_pos_median = df.groupby("app_id")["positive_review_percent"].transform("median")
-    dataset_pos_median = df["positive_review_percent"].median()
-    df["positive_review_percent"] = df["positive_review_percent"].fillna(game_pos_median).fillna(dataset_pos_median)
-
-    game_price_median = df.groupby("app_id")["price"].transform("median")
-    df["price"] = df["price"].fillna(game_price_median).fillna(0)
-
-    df["total_review_count"] = df["total_review_count"].fillna(0)
-    df["weighted_review"] = np.log1p(df["monthly_num_reviews"].clip(lower=0)) * df["positive_review_percent"].fillna(0)
     df["log_price"] = np.log1p(df["price"].clip(lower=0))
     df["log_monthly_num_reviews"] = np.log1p(df["monthly_num_reviews"].clip(lower=0))
-    df["log_total_review_count"] = np.log1p(df["total_review_count"].clip(lower=0))
+    df["weighted_review"] = df["log_monthly_num_reviews"] * df["positive_review_percent"]
     df["log_monthly_avg_players"] = np.log1p(df["monthly_avg_players"].clip(lower=0))
+    df["is_discounted"] = (df["discount_percent"].fillna(0) > 0).astype(int)
+
+    df = df.sort_values(["app_id", "date"]).copy()
+    df["monthly_num_reviews_lag1"] = df.groupby("app_id")["monthly_num_reviews"].shift(1)
+    df["log_monthly_num_reviews_lag1"] = df.groupby("app_id")["log_monthly_num_reviews"].shift(1)
+    df["positive_review_percent_lag1"] = df.groupby("app_id")["positive_review_percent"].shift(1)
+    df["weighted_review_lag1"] = df.groupby("app_id")["weighted_review"].shift(1)
+    lag_cols = [
+        "monthly_num_reviews_lag1",
+        "log_monthly_num_reviews_lag1",
+        "positive_review_percent_lag1",
+        "weighted_review_lag1",
+    ]
+    df[lag_cols] = df[lag_cols].fillna(0)
 
     print("\nMissing values after imputation")
     print(df[time_cols].isna().sum().to_string())
 
-    leakage_note = (
-        "Static total review counts look like current all-time totals, so they were saved in the dataset "
-        "but excluded from the main model features to avoid future-information leakage."
-    )
-
-    # turn cluster_id into model columns
+    # use the existing genre/type clusters as the broad category signal
+    # raw genre flags stay in the data for summaries, but not as separate model inputs
     cluster_dummies = pd.get_dummies(df["cluster_id"].astype(str), prefix="cluster", dtype=int)
     df = pd.concat([df, cluster_dummies], axis=1)
 
-    base_features = [
+    final_features = [
         "months_since_release",
-        "price",
         "log_price",
         "discount_percent",
-        "discount_active",
         "is_free_to_play",
-        "monthly_num_reviews",
         "log_monthly_num_reviews",
         "positive_review_percent",
         "weighted_review",
@@ -486,17 +577,33 @@ def main():
         "monthly_reviews_missing_flag",
         "positive_review_percent_missing_flag",
     ]
-    feature_cols = base_features + GENRE_COLS + list(cluster_dummies.columns)
+    lagged_features = [
+        "months_since_release",
+        "log_price",
+        "discount_percent",
+        "is_free_to_play",
+        "log_monthly_num_reviews_lag1",
+        "positive_review_percent_lag1",
+        "weighted_review_lag1",
+        "price_missing_flag",
+        "monthly_reviews_missing_flag",
+        "positive_review_percent_missing_flag",
+    ]
+    no_genre_features = [c for c in final_features if c in df.columns]
+    lagged_features = [c for c in lagged_features if c in df.columns]
+    cluster_features = list(cluster_dummies.columns)
+    feature_cols = no_genre_features
     feature_cols = [c for c in feature_cols if c in df.columns]
 
     modeling = df.dropna(subset=["log_monthly_avg_players", "app_id"]).copy()
-    modeling[feature_cols] = modeling[feature_cols].apply(pd.to_numeric, errors="coerce")
+    comparison_feature_cols = sorted(set(feature_cols + lagged_features + cluster_features))
+    modeling[comparison_feature_cols] = modeling[comparison_feature_cols].apply(pd.to_numeric, errors="coerce")
 
-    remaining_missing = modeling[feature_cols].isna().sum().sort_values(ascending=False)
+    remaining_missing = modeling[comparison_feature_cols].isna().sum().sort_values(ascending=False)
     if remaining_missing.sum() > 0:
         print("\nRemaining missing feature values filled with 0")
         print(remaining_missing[remaining_missing > 0].to_string())
-        modeling[feature_cols] = modeling[feature_cols].fillna(0)
+        modeling[comparison_feature_cols] = modeling[comparison_feature_cols].fillna(0)
 
     modeling.to_csv(MODELING_PATH, index=False)
 
@@ -510,10 +617,40 @@ def main():
     for c in feature_cols:
         print("   -", c)
 
-    X = modeling[feature_cols]
     y = modeling["log_monthly_avg_players"]
     groups = modeling["app_id"]
 
+    comparison_frames = []
+
+    # compare a model with no genre/cluster signal against the model with clusters
+    for feature_set, cols in {
+        "no_genre_or_cluster": no_genre_features,
+        "with_cluster_features": no_genre_features + cluster_features,
+    }.items():
+        X_compare = modeling[cols]
+        fold_results, _ = evaluate_grouped_models(X_compare, y, groups)
+        fold_results["feature_set"] = feature_set
+        comparison_frames.append(fold_results)
+
+    comparison_results = pd.concat(comparison_frames, ignore_index=True)
+    comparison_results.to_csv(MODEL_COMPARISON_PATH, index=False)
+    comparison_summary = summarize_comparison(comparison_results)
+
+    review_timing_frames = []
+    for feature_set, cols in {
+        "same_month_reviews": feature_cols,
+        "lagged_reviews": lagged_features,
+    }.items():
+        X_compare = modeling[cols]
+        fold_results, _ = evaluate_grouped_models(X_compare, y, groups)
+        fold_results["feature_set"] = feature_set
+        review_timing_frames.append(fold_results)
+
+    review_timing_results = pd.concat(review_timing_frames, ignore_index=True)
+    review_timing_results.to_csv(REVIEW_TIMING_PATH, index=False)
+    review_timing_summary = summarize_comparison(review_timing_results)
+
+    X = modeling[feature_cols]
     results, rf_pred_df = evaluate_grouped_models(X, y, groups)
     results.to_csv(RESULTS_PATH, index=False)
     print("\nCross-validation results by model")
@@ -548,10 +685,11 @@ def main():
         modeling,
         feature_cols,
         results,
+        comparison_summary,
+        review_timing_summary,
         importance,
         cluster_summary,
         update_note,
-        leakage_note,
     )
 
     print("\nTop 10 Random Forest feature importances")
@@ -559,6 +697,8 @@ def main():
     print("\nSaved files")
     print(" ", MODELING_PATH.relative_to(ROOT))
     print(" ", RESULTS_PATH.relative_to(ROOT))
+    print(" ", MODEL_COMPARISON_PATH.relative_to(ROOT))
+    print(" ", REVIEW_TIMING_PATH.relative_to(ROOT))
     print(" ", IMPORTANCE_PATH.relative_to(ROOT))
     print(" ", SUMMARY_PATH.relative_to(ROOT))
     for path in sorted(FIGURES_DIR.glob("*.png")):
