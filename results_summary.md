@@ -67,6 +67,23 @@
 | positive_review_percent_missing_flag |       0.0068 |
 | monthly_reviews_missing_flag         |       0.0054 |
 
+## Top Linear Regression Standardized Coefficients
+
+| feature                              |   coefficient |   abs_coefficient |
+|:-------------------------------------|--------------:|------------------:|
+| log_monthly_num_reviews              |        1.5494 |            1.5494 |
+| positive_review_percent_missing_flag |        0.7729 |            0.7729 |
+| price_missing_flag                   |       -0.4858 |            0.4858 |
+| is_free_to_play                      |        0.1950 |            0.1950 |
+| positive_review_percent              |       -0.1495 |            0.1495 |
+| log_price                            |       -0.0710 |            0.0710 |
+| months_since_release                 |        0.0666 |            0.0666 |
+| weighted_review                      |       -0.0385 |            0.0385 |
+| monthly_reviews_missing_flag         |        0.0141 |            0.0141 |
+| discount_percent                     |       -0.0031 |            0.0031 |
+
+These coefficients show linear association strength after standardizing the features. Interpret them cautiously because some predictors are related, especially `log_monthly_num_reviews`, `positive_review_percent`, and `weighted_review`.
+
 ## Cluster Summary
 
 |   cluster_id |   games |   rows |   avg_log_players |   median_players |   avg_log_monthly_reviews |   avg_positive_review_percent |   avg_log_price |   free_to_play_share |   discount_month_share | common_genre_type_flags                                                            | example_games                                                                |
