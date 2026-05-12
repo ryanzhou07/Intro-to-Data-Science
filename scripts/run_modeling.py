@@ -36,6 +36,7 @@ RESULTS_PATH = ROOT / "Data" / "model_results.csv"
 MODEL_COMPARISON_PATH = ROOT / "Data" / "model_comparison_results.csv"
 REVIEW_TIMING_PATH = ROOT / "Data" / "review_timing_comparison_results.csv"
 IMPORTANCE_PATH = ROOT / "Data" / "random_forest_feature_importance.csv"
+COEFFICIENT_PATH = ROOT / "Data" / "linear_regression_coefficients.csv"
 
 
 GENRE_COLS = [
@@ -204,6 +205,46 @@ def save_feature_importance(model: RandomForestRegressor, feature_cols: list) ->
     plt.savefig(FIGURES_DIR / "random_forest_feature_importance.png", dpi=200)
     plt.close()
     return importance
+
+
+def save_linear_coefficients(X: pd.DataFrame, y: pd.Series, feature_cols: list) -> pd.DataFrame:
+    """
+    Fit Linear Regression with standardized features and save coefficients.
+
+    Parameters:
+    - X: Feature matrix used by the final model
+    - y: Target values
+    - feature_cols: Feature names used by the model
+
+    Returns:
+    - DataFrame containing standardized Linear Regression coefficients
+    """
+    linear_model = make_pipeline(StandardScaler(), LinearRegression())
+    linear_model.fit(X, y)
+    coefficients = linear_model.named_steps["linearregression"].coef_
+
+    coef_df = pd.DataFrame(
+        {
+            "feature": feature_cols,
+            "coefficient": coefficients,
+        }
+    )
+    coef_df["abs_coefficient"] = coef_df["coefficient"].abs()
+    coef_df = coef_df.sort_values("abs_coefficient", ascending=False)
+    coef_df.to_csv(COEFFICIENT_PATH, index=False)
+
+    plot_df = coef_df.sort_values("coefficient")
+    plt.figure(figsize=(9, 6))
+    plt.barh(plot_df["feature"], plot_df["coefficient"])
+    plt.axvline(0, color="black", linewidth=1)
+    plt.title("Linear Regression Standardized Coefficients")
+    plt.xlabel("Standardized coefficient")
+    plt.ylabel("Feature")
+    plt.tight_layout()
+    plt.savefig(FIGURES_DIR / "linear_regression_coefficients.png", dpi=200)
+    plt.close()
+
+    return coef_df
 
 
 def save_predicted_vs_actual(pred_df: pd.DataFrame):
@@ -422,7 +463,17 @@ def save_example_time_series(df: pd.DataFrame) -> None:
     plt.close()
 
 
-def write_summary(df: pd.DataFrame, feature_cols: list, results: pd.DataFrame, comparison_summary: pd.DataFrame, review_timing_summary: pd.DataFrame, importance: pd.DataFrame, cluster_summary: pd.DataFrame, update_note: str) -> pd.DataFrame:
+def write_summary(
+    df: pd.DataFrame,
+    feature_cols: list,
+    results: pd.DataFrame,
+    comparison_summary: pd.DataFrame,
+    review_timing_summary: pd.DataFrame,
+    importance: pd.DataFrame,
+    coefficients: pd.DataFrame,
+    cluster_summary: pd.DataFrame,
+    update_note: str,
+) -> pd.DataFrame:
     """
     Write a compact markdown summary of cleaned data and model results.
 
@@ -433,6 +484,7 @@ def write_summary(df: pd.DataFrame, feature_cols: list, results: pd.DataFrame, c
     - comparison_summary: Model comparison with and without cluster features
     - review_timing_summary: Model comparison using same-month vs lagged reviews
     - importance: Random Forest feature importance table
+    - coefficients: Linear Regression standardized coefficient table
     - cluster_summary: Cluster-level summary table
     - update_note: Note about update-history availability
 
@@ -471,6 +523,14 @@ def write_summary(df: pd.DataFrame, feature_cols: list, results: pd.DataFrame, c
 
     lines.append("## Top 10 Random Forest Feature Importances\n")
     lines.append(importance.head(10).to_markdown(index=False, floatfmt=".4f"))
+    lines.append("")
+
+    lines.append("## Top Linear Regression Standardized Coefficients\n")
+    lines.append(coefficients.head(10).to_markdown(index=False, floatfmt=".4f"))
+    lines.append("")
+    lines.append(
+        "These coefficients show linear association strength after standardizing the features. Interpret them cautiously because some predictors are related, especially `log_monthly_num_reviews`, `positive_review_percent`, and `weighted_review`."
+    )
     lines.append("")
 
     lines.append("## Cluster Summary\n")
@@ -528,7 +588,7 @@ def main():
     print(df[time_cols].isna().sum().to_string())
 
     # use simple fills so we do not borrow info from future months
-    # missing flags let the model know which values were unavailable
+    # missing flags let the model know which values were unavailable (N/A values are not missing at random, so this is important)
     if "monthly_num_reviews" in df:
         df["monthly_num_reviews"] = df["monthly_num_reviews"].fillna(0)
     df["price"] = df["price"].fillna(0)
@@ -677,6 +737,7 @@ def main():
 
     save_correlation_heatmap(modeling, feature_cols)
     importance = save_feature_importance(final_rf, feature_cols)
+    coefficients = save_linear_coefficients(X, y, feature_cols)
     save_predicted_vs_actual(rf_pred_df)
     cluster_summary = save_cluster_summary(modeling)
     save_example_time_series(modeling)
@@ -688,6 +749,7 @@ def main():
         comparison_summary,
         review_timing_summary,
         importance,
+        coefficients,
         cluster_summary,
         update_note,
     )
@@ -700,6 +762,7 @@ def main():
     print(" ", MODEL_COMPARISON_PATH.relative_to(ROOT))
     print(" ", REVIEW_TIMING_PATH.relative_to(ROOT))
     print(" ", IMPORTANCE_PATH.relative_to(ROOT))
+    print(" ", COEFFICIENT_PATH.relative_to(ROOT))
     print(" ", SUMMARY_PATH.relative_to(ROOT))
     for path in sorted(FIGURES_DIR.glob("*.png")):
         print(" ", path.relative_to(ROOT))
